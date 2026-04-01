@@ -20,9 +20,12 @@ from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import settings
+from app.middleware.headers import SecurityHeadersMiddleware
 from app.middleware.logging import RequestLoggingMiddleware
 from app.middleware.security import IntranetSecurityMiddleware
 from app.routers import areas, audit, auth, connections, dashboards, health, powerbi, users, widgets
@@ -47,16 +50,22 @@ app = FastAPI(
 
 # --------------- Middlewares (ordem importa: último adicionado é executado primeiro) ---------------
 # Ordem Starlette: último adicionado executa PRIMEIRO.
-# Security → Logging → CORS (CORS precisa responder OPTIONS antes de tudo)
+# SecurityHeaders → Security → Logging → CORS (CORS precisa responder OPTIONS antes de tudo)
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(IntranetSecurityMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
 )
+
+# --------------- Rate Limiter ---------------
+from app.routers.auth import limiter  # noqa: E402
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # --------------- Routers ---------------
 app.include_router(health.router)
@@ -74,10 +83,12 @@ app.include_router(audit.router)
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    # Não expor detalhes internos de validação — logar e retornar mensagem genérica
+    logger.warning("Validation error: %s", exc.errors())
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
-            "detail": str(exc.errors()),
+            "detail": "Dados de entrada inválidos",
             "error_code": "VALIDATION_ERROR",
             "status_code": 422,
         },

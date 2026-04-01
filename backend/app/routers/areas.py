@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.deps import get_current_user
+from app.core.deps import check_permission, get_current_user
 from app.models.models import Area, User
 from app.schemas.schemas import AreaCreate, AreaRead, AreaUpdate
 
@@ -19,7 +19,7 @@ async def list_areas(db: AsyncSession = Depends(get_db)):
 @router.post("", response_model=AreaRead, status_code=status.HTTP_201_CREATED)
 async def create_area(
     body: AreaCreate,
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(check_permission("manage_areas")),
     db: AsyncSession = Depends(get_db),
 ):
     area = Area(nome=body.nome, icone=body.icone)
@@ -32,7 +32,7 @@ async def create_area(
 async def update_area(
     area_id: int,
     body: AreaUpdate,
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(check_permission("manage_areas")),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(Area).where(Area.id == area_id))
@@ -50,7 +50,7 @@ async def update_area(
 @router.delete("/{area_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_area(
     area_id: int,
-    _user: User = Depends(get_current_user),
+    _user: User = Depends(check_permission("manage_areas")),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(Area).where(Area.id == area_id))

@@ -13,6 +13,10 @@ O que este middleware faz (em ordem):
      Se não → Bloqueia com 401 (Autenticação necessária)
 
 Isso permite que TVs/painéis na empresa mostrem dashboards públicos sem login.
+
+Segurança de IP:
+  - Usa X-Forwarded-For apenas se o request.client.host é um proxy confiável
+  - Isso previne spoofing de IP via header
 """
 import ipaddress
 import logging
@@ -31,6 +35,18 @@ logger = logging.getLogger("app.middleware.security")
 
 # Rotas que NUNCA precisam de autenticação
 PUBLIC_PATHS = {"/health", "/docs", "/openapi.json", "/redoc", "/auth/login", "/auth/refresh"}
+
+
+def _get_real_ip(request: Request) -> str:
+    """Obtém o IP real do cliente, respeitando X-Forwarded-For somente de proxies confiáveis."""
+    direct_ip = request.client.host if request.client else "0.0.0.0"
+    # Só confia no X-Forwarded-For se a requisição vem de um proxy confiável
+    if direct_ip in settings.TRUSTED_PROXY_IPS:
+        forwarded = request.headers.get("x-forwarded-for", "")
+        if forwarded:
+            # O primeiro IP da lista é o cliente real
+            return forwarded.split(",")[0].strip()
+    return direct_ip
 
 
 def _is_intranet(ip_str: str) -> bool:
@@ -73,7 +89,7 @@ class IntranetSecurityMiddleware(BaseHTTPMiddleware):
                 return await call_next(request)
 
         # Sem token válido: verificar se é intranet + dashboard público
-        client_ip = request.client.host if request.client else "0.0.0.0"
+        client_ip = _get_real_ip(request)
 
         if _is_intranet(client_ip) and path.startswith("/dashboards/"):
             # Verificar se é dashboard público

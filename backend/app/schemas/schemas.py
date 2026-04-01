@@ -18,16 +18,30 @@ model_config = {"from_attributes": True}
   → Permite converter objetos SQLAlchemy em schemas automaticamente.
     Ex: UserRead.model_validate(user_do_banco)
 """
+import re
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
+
+
+def _validate_password_strength(v: str) -> str:
+    """Exige pelo menos 8 chars, 1 maiúscula, 1 minúscula e 1 número."""
+    if len(v) < 8:
+        raise ValueError("Senha deve ter pelo menos 8 caracteres")
+    if not re.search(r"[A-Z]", v):
+        raise ValueError("Senha deve conter pelo menos uma letra maiúscula")
+    if not re.search(r"[a-z]", v):
+        raise ValueError("Senha deve conter pelo menos uma letra minúscula")
+    if not re.search(r"\d", v):
+        raise ValueError("Senha deve conter pelo menos um número")
+    return v
 
 
 # ======================== Auth ========================
 
 class LoginRequest(BaseModel):
     email: EmailStr
-    senha: str = Field(min_length=4)
+    senha: str = Field(min_length=8)
 
 
 class TokenResponse(BaseModel):
@@ -70,17 +84,29 @@ class GrupoAcessoRead(BaseModel):
 class UserCreate(BaseModel):
     nome: str = Field(max_length=200)
     email: EmailStr
-    senha: str = Field(min_length=4)
+    senha: str = Field(min_length=8)
     ativo: bool = True
     grupo_id: int | None = None
+
+    @field_validator("senha")
+    @classmethod
+    def senha_strength(cls, v: str) -> str:
+        return _validate_password_strength(v)
 
 
 class UserUpdate(BaseModel):
     nome: str | None = None
     email: EmailStr | None = None
-    senha: str | None = Field(default=None, min_length=4)
+    senha: str | None = Field(default=None, min_length=8)
     ativo: bool | None = None
     grupo_id: int | None = None
+
+    @field_validator("senha")
+    @classmethod
+    def senha_strength(cls, v: str | None) -> str | None:
+        if v is not None:
+            return _validate_password_strength(v)
+        return v
 
 
 class UserRead(BaseModel):

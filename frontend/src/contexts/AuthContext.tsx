@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import type { User, Permission } from "@/types";
 import { login as loginApi } from "@/services/authApi";
 import { getMe } from "@/services/userApi";
+import { setRefreshToken } from "@/services/apiClient";
 
 interface AuthContextType {
   user: User | null;
@@ -40,7 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(me);
     } catch {
       localStorage.removeItem("access_token");
-      localStorage.removeItem("refresh_token");
+      setRefreshToken(null);
       setUser(null);
     } finally {
       setIsLoading(false);
@@ -55,7 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (email: string, senha: string) => {
       const data = await loginApi({ email, senha });
       localStorage.setItem("access_token", data.access_token);
-      localStorage.setItem("refresh_token", data.refresh_token);
+      setRefreshToken(data.refresh_token);
       const me = await getMe();
       setUser(me);
       router.push("/home");
@@ -65,7 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
+    setRefreshToken(null);
     setUser(null);
     router.push("/login");
   }, [router]);

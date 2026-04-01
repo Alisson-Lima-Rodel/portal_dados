@@ -5,6 +5,21 @@ const apiClient = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
+/**
+ * Armazenamento seguro do refresh token em memória (não localStorage).
+ * Se a aba fechar, o refresh token é perdido e o usuário faz login novamente.
+ * Isso previne roubo do refresh token via XSS.
+ */
+let _refreshToken: string | null = null;
+
+export function setRefreshToken(token: string | null) {
+  _refreshToken = token;
+}
+
+export function getRefreshToken(): string | null {
+  return _refreshToken;
+}
+
 // Interceptor: anexa o access_token em toda requisição
 apiClient.interceptors.request.use((config) => {
   if (typeof window !== "undefined") {
@@ -53,7 +68,7 @@ apiClient.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const refreshToken = localStorage.getItem("refresh_token");
+        const refreshToken = _refreshToken;
         if (!refreshToken) throw new Error("No refresh token");
 
         const { data } = await axios.post(
@@ -63,7 +78,7 @@ apiClient.interceptors.response.use(
 
         localStorage.setItem("access_token", data.access_token);
         if (data.refresh_token) {
-          localStorage.setItem("refresh_token", data.refresh_token);
+          _refreshToken = data.refresh_token;
         }
 
         processQueue(null, data.access_token);
@@ -72,7 +87,7 @@ apiClient.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError, null);
         localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
+        _refreshToken = null;
         if (typeof window !== "undefined") {
           window.location.href = "/login";
         }

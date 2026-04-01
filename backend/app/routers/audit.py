@@ -9,7 +9,7 @@ GET  /audit/logs   → Consulta logs com filtros (usuário, dashboard, data)
 import ipaddress
 from datetime import datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -83,8 +83,8 @@ async def log_access(
 
 @router.get("/logs")
 async def get_logs(
-    limit: int = 50,
-    offset: int = 0,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     usuario_id: int | None = None,
     dashboard_id: int | None = None,
     data_inicio: datetime | None = None,

@@ -9,12 +9,12 @@ GET    /dashboards/{id}/data       → ⭐ DADOS DOS GRÁFICOS (com cache dinâm
 GET    /dashboards/{id}/widgets    → Lista de widgets do dashboard
 POST   /dashboards/{id}/widgets    → Criar widget (edit_dashboard)
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.deps import check_permission, get_current_user
+from app.core.deps import check_permission, get_current_user, get_optional_user
 from app.models.models import Dashboard, User, Widget
 from app.schemas.schemas import (
     DashboardCreate,
@@ -31,8 +31,8 @@ router = APIRouter(prefix="/dashboards", tags=["dashboards"])
 
 @router.get("/catalog")
 async def catalog(
-    limit: int = 20,
-    offset: int = 0,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     search: str | None = None,
     area_id: int | None = None,
     db: AsyncSession = Depends(get_db),
@@ -84,8 +84,10 @@ async def update_dashboard(
     if dashboard is None:
         raise HTTPException(status_code=404, detail="Dashboard não encontrado")
 
+    _DASHBOARD_UPDATE_FIELDS = {"nome", "descricao", "is_public", "taxa_atualizacao_minutos", "area_id"}
     for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(dashboard, field, value)
+        if field in _DASHBOARD_UPDATE_FIELDS:
+            setattr(dashboard, field, value)
     await db.flush()
     return dashboard
 
@@ -107,11 +109,16 @@ async def delete_dashboard(
 @router.get("/{dashboard_id}/data")
 async def dashboard_data(
     dashboard_id: int,
+    user: User | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(Dashboard).where(Dashboard.id == dashboard_id))
-    if result.scalar_one_or_none() is None:
+    dashboard = result.scalar_one_or_none()
+    if dashboard is None:
         raise HTTPException(status_code=404, detail="Dashboard não encontrado")
+    # Se não autenticado, só permite acesso a dashboards públicos
+    if user is None and not dashboard.is_public:
+        raise HTTPException(status_code=401, detail="Autenticação necessária")
     data = await get_dashboard_data(db, dashboard_id)
     return data
 
@@ -157,8 +164,10 @@ async def update_widget(
     widget = result.scalar_one_or_none()
     if widget is None:
         raise HTTPException(status_code=404, detail="Widget não encontrado")
+    _WIDGET_UPDATE_FIELDS = {"tipo", "query_service_key", "parametros", "posicao_grid"}
     for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(widget, field, value)
+        if field in _WIDGET_UPDATE_FIELDS:
+            setattr(widget, field, value)
     await db.flush()
     return widget
 

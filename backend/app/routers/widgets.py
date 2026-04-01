@@ -34,8 +34,10 @@ async def update_widget(
     widget = result.scalar_one_or_none()
     if widget is None:
         raise HTTPException(status_code=404, detail="Widget não encontrado")
+    _WIDGET_UPDATE_FIELDS = {"tipo", "query_service_key", "parametros", "posicao_grid"}
     for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(widget, field, value)
+        if field in _WIDGET_UPDATE_FIELDS:
+            setattr(widget, field, value)
     await db.flush()
     return widget
 

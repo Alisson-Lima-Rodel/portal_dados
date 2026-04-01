@@ -9,6 +9,9 @@ RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 # ============= Runtime Stage =============
 FROM python:3.12-slim AS runtime
 
+# Criar usuário não-root
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
+
 WORKDIR /app
 
 # Copiar dependências instaladas
@@ -16,6 +19,9 @@ COPY --from=builder /install /usr/local
 
 # Copiar código da aplicação
 COPY . .
+
+# Não rodar como root
+USER appuser
 
 EXPOSE 8000
 
